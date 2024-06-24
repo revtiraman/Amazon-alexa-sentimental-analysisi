@@ -1,0 +1,389 @@
+# Mini Project- Amazon Alexa Review Sentiment Analysis
+
+Analyzing the Amazon Alexa dataset and building classification models to predict if the sentiment of a given input sentence is positive or negative.
+
+### Importing required libraries
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import nltk
+from nltk.stem.porter import PorterStemmer
+nltk.download('stopwords')
+from nltk.corpus import stopwords
+STOPWORDS = set(stopwords.words('english'))
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.model_selection import cross_val_score
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import accuracy_score
+from wordcloud import WordCloud
+from sklearn.tree import DecisionTreeClassifier
+from xgboost import XGBClassifier
+import pickle
+import re
+
+%pip install wordcloud
+
+### Exploratory Data Analysis
+
+#Load the data
+
+data = pd.read_csv(r"/content/amazon_alexa.tsv", delimiter = '\t', quoting = 3)
+
+print(f"Dataset shape : {data.shape}")
+
+data.head()
+
+data.columns
+
+data.isnull().sum()
+
+data[data['verified_reviews'].isna() == True]
+
+data.dropna(inplace=True)
+
+data.shape
+
+data['length'] = data['verified_reviews'].apply(len)
+
+data.head()
+
+Datatypes of the features
+
+data.dtypes
+
+* rating, feedback and length are integer values <br>
+* date, variation and verified_reviews are string values
+
+### Analyzing 'rating' column
+
+This column refers to the rating of the variation given by the user
+
+data['rating'].value_counts()
+
+fig = plt.figure(figsize=(7,7))
+colors = ('red', 'green', 'blue','orange','yellow')
+wp = {'linewidth':1, "edgecolor":'black'}
+tags = data['rating'].value_counts()/data.shape[0]
+explode=(0.1,0.1,0.1,0.1,0.1)
+tags.plot(kind='pie', autopct="%1.1f%%", shadow=True, colors=colors, startangle=90, wedgeprops=wp, explode=explode, label='Percentage wise distrubution of rating')
+from io import  BytesIO
+graph = BytesIO()
+fig.savefig(graph, format="png")
+
+### Analyzing 'feedback' column
+
+This column refers to the feedback of the verified review
+
+data['feedback'].value_counts()
+
+data[data['feedback'] == 0].iloc[1]['verified_reviews']
+
+data[data['feedback'] == 1].iloc[1]['verified_reviews']
+
+From the above 2 examples we can see that feedback **0 is negative review** and **1 is positive review**
+
+Let's plot the feedback value count in a bar graph
+
+data['feedback'].value_counts().plot.bar(color = 'blue')
+plt.title('Feedback distribution count')
+plt.xlabel('Feedback')
+plt.ylabel('Count')
+plt.show()
+
+fig = plt.figure(figsize=(7,7))
+colors = ('red', 'green')
+wp = {'linewidth':1, "edgecolor":'black'}
+tags = data['feedback'].value_counts()/data.shape[0]
+explode=(0.1,0.1)
+tags.plot(kind='pie', autopct="%1.1f%%", shadow=True, colors=colors, startangle=90, wedgeprops=wp, explode=explode, label='Percentage wise distrubution of feedback')
+
+#Feedback = 0
+data[data['feedback'] == 0]['rating'].value_counts()
+
+#Feedback = 1
+data[data['feedback'] == 1]['rating'].value_counts()
+
+##### If rating of a review is 1 or 2 then the feedback is 0 (negative) and if the rating is 3, 4 or 5 then the feedback is 1 (positive).
+
+### Analyzing 'variation' column
+
+This column refers to the variation or type of Amazon Alexa product. Example - Black Dot, Charcoal Fabric etc.
+
+data['variation'].value_counts()
+
+data['variation'].value_counts().plot.bar(color = 'orange')
+plt.title('Variation distribution count')
+plt.xlabel('Variation')
+plt.ylabel('Count')
+plt.show()
+
+data['variation'].value_counts().values
+
+plt.pie(data['variation'].value_counts().values[:12], labels=data['variation'].value_counts().index[:12], autopct='%1.1f%%', shadow =True, colors = ('red', 'green', 'blue','orange','yellow','brown','pink','gray','olive','cyan','purple','gold'),startangle=90, wedgeprops= {'linewidth':1, "edgecolor":'black'},explode=(0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1))
+plt.show()
+
+Mean rating according to variation
+
+data.groupby('variation')['rating'].mean()
+
+Let's analyze the above ratings
+
+data.groupby('variation')['rating'].mean().sort_values().plot.bar(color = 'brown', figsize=(11, 6))
+plt.title("Mean rating according to variation")
+plt.xlabel('Variation')
+plt.ylabel('Mean rating')
+plt.show()
+
+### Analyzing 'verified_reviews' column
+
+This column contains the textual review given by the user for a variation for the product.
+
+data['length'].describe()
+
+sns.histplot(data['length'],color='blue').set(title='Distribution of length of review ')
+
+Length analysis when feedback is 0 (negative)
+
+sns.histplot(data[data['feedback']==0]['length'],color='red', bins=100).set(title='Distribution of length of review if feedback = 0')
+
+Length analysis when feedback is 1 (positive)
+
+sns.histplot(data[data['feedback']==1]['length'],color='green',bins=100).set(title='Distribution of length of review if feedback = 1')
+
+Lengthwise mean rating
+
+data.groupby('length')['rating'].mean().plot.hist(color = 'blue', figsize=(7, 6), bins = 20)
+plt.title(" Review length wise mean ratings")
+plt.xlabel('ratings')
+plt.ylabel('length')
+plt.show()
+
+cv = CountVectorizer(stop_words='english') #Feature Extraction steps(3rd steps in nlp)
+words = cv.fit_transform(data.verified_reviews)# converting categorical varibales or discrete variables to integer or numbers
+
+# Combine all reviews
+reviews = " ".join([review for review in data['verified_reviews']])
+
+# Initialize wordcloud object
+wc = WordCloud(background_color='white', max_words=50)
+
+# Generate and plot wordcloud
+plt.figure(figsize=(10,10))
+plt.imshow(wc.generate(reviews))
+plt.title('Wordcloud for all reviews', fontsize=10)
+plt.axis('off')
+plt.show()
+
+Lets find the unique words in each feedback category
+
+# Combine all reviews for each feedback category and splitting them into individual words
+neg_reviews = " ".join([review for review in data[data['feedback'] == 0]['verified_reviews']])
+neg_reviews = neg_reviews.lower().split()
+
+pos_reviews = " ".join([review for review in data[data['feedback'] == 1]['verified_reviews']])
+pos_reviews = pos_reviews.lower().split()
+
+#Finding words from reviews which are present in that feedback category only
+unique_negative = [x for x in neg_reviews if x not in pos_reviews]
+unique_negative = " ".join(unique_negative)
+
+unique_positive = [x for x in pos_reviews if x not in neg_reviews]
+unique_positive = " ".join(unique_positive)
+
+
+wc = WordCloud(background_color='white', max_words=50)
+
+# Generate and plot wordcloud
+plt.figure(figsize=(10,10))
+plt.imshow(wc.generate(unique_negative))
+plt.title('Wordcloud for negative reviews', fontsize=10)
+plt.axis('off')
+plt.show()
+
+Negative words can be seen in the above word cloud - garbage, pointless, poor, horrible, repair etc
+
+wc = WordCloud(background_color='white', max_words=50)
+
+# Generate and plot wordcloud
+plt.figure(figsize=(10,10))
+plt.imshow(wc.generate(unique_positive))
+plt.title('Wordcloud for positive reviews', fontsize=10)
+plt.axis('off')
+plt.show()
+
+Positive words can be seen in the above word cloud - good, enjoying, amazing, best, great etc
+
+# Preprocessing and Modelling
+
+To build the corpus from the 'verified_reviews' we perform the following - <br>
+1. Replace any non alphabet characters with a space
+2. Covert to lower case and split into words
+3. Iterate over the individual words and if it is not a stopword then add the stemmed form of the word to the corpus
+
+corpus = []
+stemmer = PorterStemmer() #Stemming(jumping,jumps,jumped) ->jump
+for i in range(0, data.shape[0]):
+  review = re.sub('[^a-zA-Z]', ' ', data.iloc[i]['verified_reviews'])
+  review = review.lower().split()
+  review = [stemmer.stem(word) for word in review if not word in STOPWORDS]
+  review = ' '.join(review)
+  corpus.append(review)
+
+corpus[3]
+
+Using Count Vectorizer to create bag of words
+
+cv = CountVectorizer(max_features = 2500)
+
+#Storing independent and dependent variables in X and y
+X = cv.fit_transform(corpus).toarray()
+y = data['feedback'].values
+
+#Saving the Count Vectorizer
+pickle.dump(cv, open('/content/countVectorizer.pkl', 'wb'))
+
+Checking the shape of X and y
+
+print(f"X shape: {X.shape}")
+print(f"y shape: {y.shape}")
+
+Splitting data into train and test set with 30% data with testing.
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.3, random_state = 15)
+
+print(f"X train: {X_train.shape}")
+print(f"y train: {y_train.shape}")
+print(f"X test: {X_test.shape}")
+print(f"y test: {y_test.shape}")
+
+print(f"X train max value: {X_train.max()}")
+print(f"X test max value: {X_test.max()}")
+
+We'll scale X_train and X_test so that all values are between 0 and 1.
+
+scaler = MinMaxScaler()
+
+X_train_scl = scaler.fit_transform(X_train)
+X_test_scl = scaler.transform(X_test)
+
+#Saving the scaler model
+pickle.dump(scaler, open('/content/scaler.pkl', 'wb'))
+
+#### Random Forest
+
+#Fitting scaled X_train and y_train on Random Forest Classifier(This ius the model used)
+model_rf = RandomForestClassifier()
+model_rf.fit(X_train_scl, y_train)#Train
+
+#Accuracy of the model on training and testing data
+
+print("Training Accuracy :", model_rf.score(X_train_scl, y_train))
+print("Testing Accuracy :", model_rf.score(X_test_scl, y_test))
+
+#Predicting on the test set
+y_preds = model_rf.predict(X_test_scl)
+
+#Confusion Matrix
+cm = confusion_matrix(y_test, y_preds)
+
+cm_display = ConfusionMatrixDisplay(confusion_matrix=cm,display_labels=model_rf.classes_)
+cm_display.plot()
+plt.show()
+
+TN FN
+FP TP
+
+K fold cross-validation
+
+accuracies = cross_val_score(estimator = model_rf, X = X_train_scl, y = y_train, cv = 10)
+
+print("Accuracy :", accuracies.mean())
+print("Standard Variance :", accuracies.std())
+
+Applying grid search to get the optimal parameters on random forest
+
+params = {
+    'bootstrap': [True],
+    'max_depth': [80, 100],
+    'min_samples_split': [8, 12],
+    'n_estimators': [100, 300]
+}
+
+
+
+cv_object = StratifiedKFold(n_splits = 2)
+
+grid_search = GridSearchCV(estimator = model_rf, param_grid = params, cv = cv_object, verbose = 0, return_train_score = True)
+grid_search.fit(X_train_scl, y_train.ravel())
+
+#Find the best parameter for random forest
+
+
+print("Best Parameter Combination : {}".format(grid_search.best_params_))
+
+print("Cross validation mean accuracy on train set : {}".format(grid_search.cv_results_['mean_train_score'].mean()*100))
+print("Cross validation mean accuracy on test set : {}".format(grid_search.cv_results_['mean_test_score'].mean()*100))
+print("Accuracy score for test set :", accuracy_score(y_test, y_preds))
+
+#### XgBoost
+
+model_xgb = XGBClassifier()
+model_xgb.fit(X_train_scl, y_train)
+
+#Accuracy of the model on training and testing data
+
+print("Training Accuracy :", model_xgb.score(X_train_scl, y_train))
+print("Testing Accuracy :", model_xgb.score(X_test_scl, y_test))
+
+y_preds = model_xgb.predict(X_test)
+
+#Confusion Matrix
+cm = confusion_matrix(y_test, y_preds)
+print(cm)
+
+cm_display = ConfusionMatrixDisplay(confusion_matrix=cm,display_labels=model_xgb.classes_)
+cm_display.plot()
+plt.show()
+
+pickle.dump(model_xgb, open('/content/model_xgb.pkl', 'wb'))
+
+#### Decision Tree Classifier
+
+model_dt = DecisionTreeClassifier()
+model_dt.fit(X_train_scl, y_train)
+
+#Accuracy of the model on training and testing data
+
+print("Training Accuracy :", model_dt.score(X_train_scl, y_train))
+print("Testing Accuracy :", model_dt.score(X_test_scl, y_test))
+
+y_preds = model_dt.predict(X_test)
+
+#Confusion Matrix
+cm = confusion_matrix(y_test, y_preds)
+print(cm)
+
+cm_display = ConfusionMatrixDisplay(confusion_matrix=cm,display_labels=model_dt.classes_)
+cm_display.plot()
+plt.show()
+
+train_acc=[]
+test_acc=[]
+for mod in [model_dt, model_rf, model_xgb]:
+  train_acc.append(mod.score(X_train_scl, y_train))
+  test_acc.append(mod.score(X_test_scl, y_test))
+plt.bar(['Decision Tree', 'Random Forest', 'XGBoost'], [train_acc[0], train_acc[1], train_acc[2]], color = 'blue')
+
+plt.bar(['Decision Tree', 'Random Forest', 'XGBoost'], [test_acc[0], test_acc[1], test_acc[2]], color = 'red')
+
+print(train_acc)
+print(test_acc)
+
